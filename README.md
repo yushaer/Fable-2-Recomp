@@ -219,7 +219,14 @@ Direct3D 12 (the default renderer).
 
 Details, every setting and how it works:
 [docs/GRAPHICS_ENHANCEMENTS.md](docs/GRAPHICS_ENHANCEMENTS.md); the material
-shaders: [materials/README.md](materials/README.md).\
+shaders: [materials/README.md](materials/README.md).
+
+## Mods and texture packs
+
+Folders in `mods/` next to the executable can replace textures (at any
+resolution, with normal and material maps), material shaders and game files;
+**F6 → Mods** turns them on and off and reloads them live. How to make one:
+[docs/MODDING.md](docs/MODDING.md).\
 <br>
 <br>
 <br>

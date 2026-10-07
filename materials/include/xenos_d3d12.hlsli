@@ -52,7 +52,7 @@ cbuffer xe_system_cbuffer : register(b0) {
   uint4 xe_edram_rt_blend_factors_ops;
   float4 xe_edram_blend_constant;
   // rex/graphics/pipeline/material_shaders.h.
-  float4 xe_material_params[4];
+  float4 xe_material_params[22];
 };
 
 cbuffer xe_float_cbuffer : register(b1) {
@@ -112,6 +112,60 @@ uint XeVertexShaderHash() { return asuint(xe_material_params[2].y); }
 // a character or creature, rather than a building or prop sharing the
 // material.
 bool XeIsCharacter() { return (XeVertexShaderTraits() & XE_VERTEX_SHADER_TRAIT_SKINNED) != 0; }
+
+// Shader options (options.toml): slot 0-31, as set in the menu.
+float XeMaterialOption(uint slot) { return xe_material_params[4 + slot / 4][slot % 4]; }
+bool XeMaterialOptionOn(uint slot) { return XeMaterialOption(slot) > 0.5; }
+
+#define XE_NO_TEXTURE 0xFFFFFFFFu
+
+// Custom textures (textures.toml): slot 0-7.
+uint XeCustomTextureIndex(uint slot) { return asuint(xe_material_params[12 + slot / 4][slot % 4]); }
+bool XeHasCustomTexture(uint slot) { return XeCustomTextureIndex(slot) != XE_NO_TEXTURE; }
+float4 XeLoadCustomTexture(uint slot, int2 texel, uint mip) {
+  uint index = XeCustomTextureIndex(slot);
+  uint3 size;
+  uint mips;
+  xe_textures_2d[index].GetDimensions(mip, size.x, size.y, size.z, mips);
+  int2 wrapped = (texel % int2(size.xy) + int2(size.xy)) % int2(size.xy);
+  return xe_textures_2d[index].Load(int4(wrapped, 0, mip));
+}
+// Bilinear, wrapping.
+float4 XeSampleCustomTexture(uint slot, float2 uv, uint mip) {
+  uint index = XeCustomTextureIndex(slot);
+  uint3 size;
+  uint mips;
+  xe_textures_2d[index].GetDimensions(mip, size.x, size.y, size.z, mips);
+  float2 texel = uv * float2(size.xy) - 0.5;
+  int2 base = int2(floor(texel));
+  float2 f = texel - float2(base);
+  return lerp(lerp(XeLoadCustomTexture(slot, base, mip), XeLoadCustomTexture(slot, base + int2(1, 0), mip), f.x),
+              lerp(XeLoadCustomTexture(slot, base + int2(0, 1), mip),
+                   XeLoadCustomTexture(slot, base + int2(1, 1), mip), f.x),
+              f.y);
+}
+
+// Companion maps of the texture in fetch constant 0-7 (texture packs:
+// <hash>_normal, _orm, _height, _emissive).
+#define XE_COMPANION_NORMAL 0u
+#define XE_COMPANION_ORM 1u
+#define XE_COMPANION_HEIGHT 2u
+#define XE_COMPANION_EMISSIVE 3u
+uint XeCompanionIndex(uint fetch, uint kind) {
+  return fetch < 8u ? asuint(xe_material_params[14 + fetch][kind]) : XE_NO_TEXTURE;
+}
+bool XeHasCompanion(uint fetch, uint kind) { return XeCompanionIndex(fetch, kind) != XE_NO_TEXTURE; }
+// With the texture's own sampler (sampler_slot - its descriptor slot in
+// xe_descriptor_indices), at its texture coordinates.
+float4 XeSampleCompanion(uint fetch, uint kind, uint sampler_slot, float2 uv) {
+  return xe_textures_2d[XeCompanionIndex(fetch, kind)].Sample(
+      xe_samplers[XeDescriptorIndex(sampler_slot)], float3(uv, 0.0));
+}
+float4 XeSampleCompanionGrad(uint fetch, uint kind, uint sampler_slot, float2 uv, float2 dx,
+                             float2 dy) {
+  return xe_textures_2d[XeCompanionIndex(fetch, kind)].SampleGrad(
+      xe_samplers[XeDescriptorIndex(sampler_slot)], float3(uv, 0.0), dx, dy);
+}
 
 // What the translator bakes into its shaders.
 #define XE_TRANSLATION_GAMMA_RT_AS_UNORM8 (1u << 0)
