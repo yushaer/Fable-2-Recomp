@@ -1,0 +1,43 @@
+# Fable II's local lights - fires, lamps, magic - as its lit materials take
+# them, captured from their draws each frame for the dynamic lighting and fire
+# effects (scene_fx_dynamic_lights, scene_fx_fire; see the SDK's
+# rex/graphics/pipeline/scene_lights.h).
+#
+# The lit materials take the sun and up to two nearby lights: light i's
+# position (w = 1) or direction (w = 0) in c80 + i, its color in c87 + i,
+# whether it falls off in c94, and 1 / its radius in c96. Mods can add sources
+# for more shaders in their own lights.toml.
+
+# Two nearby lights.
+[[source]]
+pixel_shaders = [
+  "648B965C200A5113",  # characters and movable props
+  "44B567635EB10620",  # forward-shadowed: hair, blended props
+  "C0108405DECA669F",
+  "E99F4ACC7A3C78B4",  # grass
+  "09CB69BD265B58D1",
+  "FC0922A3A8D8DA7A",  # buildings
+  "789266C3E42D7E59",
+]
+
+[[source.light]]
+position = "c80"
+color = "c87"
+local = "c94.x"
+inverse_radius = "c96.x"
+
+[[source.light]]
+position = "c81"
+color = "c88"
+local = "c94.y"
+inverse_radius = "c96.y"
+
+# One nearby light.
+[[source]]
+pixel_shaders = ["401A01FD4E5F8757"]
+
+[[source.light]]
+position = "c80"
+color = "c87"
+local = "c94.x"
+inverse_radius = "c96.x"

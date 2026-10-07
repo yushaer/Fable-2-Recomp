@@ -89,10 +89,29 @@ TextureCube<float4> xe_textures_cube[] : register(t0, space3);
 // Material settings (material_shaders.h).
 #define XE_MATERIAL_FEATURE_SOFT_SHADOWS (1u << 0)
 #define XE_MATERIAL_FEATURE_SPECULAR (1u << 1)
+#define XE_MATERIAL_FEATURE_CHARACTER_LIGHTING (1u << 2)
+#define XE_MATERIAL_FEATURE_FOLIAGE (1u << 3)
+#define XE_MATERIAL_FEATURE_FIRE (1u << 4)
 uint XeMaterialFeatures() { return asuint(xe_material_params[0].x); }
+bool XeMaterialFeature(uint feature) { return (XeMaterialFeatures() & feature) != 0; }
 float XeShadowSoftness() { return xe_material_params[0].y; }
 float XeSpecularIntensity() { return xe_material_params[0].z; }
 float XeRoughness() { return xe_material_params[0].w; }
+// Seconds (wrapped hourly), the same for the whole frame.
+float XeTime() { return xe_material_params[1].x; }
+float XeSheenIntensity() { return xe_material_params[1].y; }
+float XeFoliageTranslucency() { return xe_material_params[1].z; }
+float XeFireIntensity() { return xe_material_params[1].w; }
+// Traits of the draw's vertex shader (material_shaders.h VertexShaderTrait).
+#define XE_VERTEX_SHADER_TRAIT_INDEXED_CONSTANTS (1u << 0)
+#define XE_VERTEX_SHADER_TRAIT_SKINNED (1u << 1)
+uint XeVertexShaderTraits() { return asuint(xe_material_params[2].x); }
+// The low 32 bits of the draw's vertex shader hash.
+uint XeVertexShaderHash() { return asuint(xe_material_params[2].y); }
+// For the lit mesh materials: whether the mesh is skinned with blended bones -
+// a character or creature, rather than a building or prop sharing the
+// material.
+bool XeIsCharacter() { return (XeVertexShaderTraits() & XE_VERTEX_SHADER_TRAIT_SKINNED) != 0; }
 
 // What the translator bakes into its shaders.
 #define XE_TRANSLATION_GAMMA_RT_AS_UNORM8 (1u << 0)
@@ -488,6 +507,13 @@ float4 XePsParamGen(float4 position, bool is_front_face) {
   }
   param_gen.z = asfloat(((xe_flags >> XE_SYS_FLAG_PRIMITIVE_LINE_SHIFT) & 1u) << 31);
   return param_gen;
+}
+
+// For point sprites: the point flag in the sign of Y, the sprite coordinates
+// in Z and W.
+float4 XePsParamGenPoint(float4 position, float2 point_coordinates) {
+  float2 pixel = abs(floor(position.xy) / XeDrawResolutionScale());
+  return float4(pixel.x, asfloat(asuint(pixel.y) | 0x80000000u), saturate(point_coordinates));
 }
 
 // Epilogue (dxbc_translator_om.cpp, render target path).

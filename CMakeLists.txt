@@ -252,7 +252,10 @@ add_custom_target(fable_2_materials_staging
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_CURRENT_SOURCE_DIR}/materials/d3d12
           $<TARGET_FILE_DIR:fable_2>/materials/d3d12
-  COMMENT "Staging materials/d3d12/*.dxbc next to fable_2.exe"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${CMAKE_CURRENT_SOURCE_DIR}/materials/lights.toml
+          $<TARGET_FILE_DIR:fable_2>/materials/lights.toml
+  COMMENT "Staging materials/d3d12/*.dxbc and lights.toml next to fable_2.exe"
 )
 add_dependencies(fable_2 fable_2_materials_staging)
 

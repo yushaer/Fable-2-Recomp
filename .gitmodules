@@ -1,4 +1,4 @@
 [submodule "thirdparty/rexglue-sdk"]
 	path = thirdparty/rexglue-sdk
 	url = https://github.com/yushaer/rexglue-sdk.git
-	branch = graphics-enhancements
+	branch = texture-mods

@@ -755,6 +755,21 @@ class ControlServer {
     return false;
   }
 
+  // Runs a command cvar (like material_shaders_reload) with `args`. False if
+  // `name` isn't a command.
+  bool InvokeCommandCvar(std::string_view name, std::string_view args) {
+    std::function<void(std::string_view)> callback;
+    for (const auto& entry : rex::cvar::GetRegistry()) {
+      if (entry.name == name && entry.type == rex::cvar::FlagType::Command) {
+        callback = entry.command_callback;
+        break;
+      }
+    }
+    if (!callback) return false;
+    callback(args);
+    return true;
+  }
+
   //--- Threads --------------------------------------------------------------
 
   void ThreadConn() {
@@ -1186,7 +1201,9 @@ class ControlServer {
       return Err(std::format("unknown cvar '{}'", *name));
     const std::string* want = v.FindStr("value");
     if (want) {
-      if (!rex::cvar::SetFlagByName(*name, *want))
+      // Commands (like material_shaders_reload) run, with the value as their
+      // arguments.
+      if (!InvokeCommandCvar(*name, *want) && !rex::cvar::SetFlagByName(*name, *want))
         return Err(std::format("cvar '{}' rejected value '{}'", *name, *want));
       return Ok(std::string(",\"name\":\"") + json_min::JEsc(*name) +
                 std::string("\",\"value\":\"") + json_min::JEsc(*want) +
