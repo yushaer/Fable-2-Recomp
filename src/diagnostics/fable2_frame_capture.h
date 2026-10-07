@@ -66,9 +66,11 @@ inline void PutBE32(std::vector<uint8_t>& o, uint32_t v) {
   o.push_back(static_cast<uint8_t>(v >> 8));
   o.push_back(static_cast<uint8_t>(v));
 }
-inline void PutBE16(std::vector<uint8_t>& o, uint16_t v) {
-  o.push_back(static_cast<uint8_t>(v >> 8));
+// Deflate's own fields (a stored block's LEN/NLEN) are little-endian, unlike
+// PNG's.
+inline void PutLE16(std::vector<uint8_t>& o, uint16_t v) {
   o.push_back(static_cast<uint8_t>(v));
+  o.push_back(static_cast<uint8_t>(v >> 8));
 }
 
 inline uint32_t Crc32(const uint8_t* d, size_t n) {
@@ -149,8 +151,8 @@ inline bool WritePngRgb(const std::string& utf8_path, int w, int h,
     if (len > 65535u) len = 65535u;
     const bool last = (off + len == filt.size());
     idat.push_back(last ? 1 : 0);  // BFINAL | (BTYPE=00 << 1)
-    PutBE16(idat, static_cast<uint16_t>(len));
-    PutBE16(idat, static_cast<uint16_t>(~len));
+    PutLE16(idat, static_cast<uint16_t>(len));
+    PutLE16(idat, static_cast<uint16_t>(~len));
     idat.insert(idat.end(), filt.data() + off, filt.data() + off + len);
     off += len;
   }
