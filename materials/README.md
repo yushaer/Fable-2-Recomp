@@ -46,7 +46,37 @@ emulator binds for it:
 `include/xenos_d3d12.hlsli` declares all of this and implements what the
 translator does: texture fetches with the fetch constant's LOD bias, signs,
 gamma and exponent bias, the Xbox 360's multiply where 0 times anything is 0,
-the pixel parameters, and the epilogue.
+the pixel parameters, and the epilogue. It also has what material shaders get
+beyond the translation: options (`XeMaterialOption`), custom textures
+(`XeSampleCustomTexture`), texture packs' maps (`XeSampleCompanion` - see
+[docs/MODDING.md](../docs/MODDING.md)) and layer blending.
+
+### Layer blending
+
+Some surfaces are drawn in layers, one pass per layer, added up weighted by
+each pass's alpha - Fable II's terrain draws frost, mud and snow that way (the
+first pass replacing what's there, the others adding with source alpha). Each
+pass only knows its own layer, so a pass can't change how much of it shows
+without leaving holes or overlaps. Layer blending lets it: a shader that
+defines `XE_LAYER_BLENDING` before including `xenos_d3d12.hlsli`, outputs a
+second color (`SV_Target1`) and ends with
+
+```hlsl
+xe_out_color0 = XeColorOutput(xe_color0, 0u);
+XeLayerBlend(xe_out_color0, xe_out_color1, factor, xe_input.position.xy);
+```
+
+gets its layer weighted by `alpha * factor` (a height map's, say), all the
+layers normalized together and scaled back to what their alphas add up to -
+`factor = 1` everywhere draws exactly what the game does. The SDK keeps the
+sums of the layers drawn so far at each pixel (a rasterizer ordered buffer)
+and blends these shaders' color as `color + destination * color1.a`; each pass
+draws its own share and rescales what the earlier ones drew. It needs
+rasterizer ordered views and a single render target (Direct3D 12's
+dual-source blending), and only works for layers added up like this, drawn
+with early depth testing (no `SV_Coverage` output) - otherwise the shader
+isn't used, or the game's blending is (`XeLayerBlend` then leaves the color
+alone).
 
 ## Building
 

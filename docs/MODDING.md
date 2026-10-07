@@ -60,8 +60,9 @@ or with notes after the hash, like `3D775A3269360513_cobblestones.png`.
   as the original, so draw it the way the dump looks.
 - `textures/` next to the executable works too, without a mod.
 
-`texture_replacement` turns replacement off; replacing the textures of a
-running game takes `mods_reload`.
+Texture packs are read when the game starts: restart it after adding or
+changing one. `texture_replacement` turns replacement off (also at the next
+start).
 
 ### Maps for material shaders
 
@@ -71,13 +72,18 @@ Next to a texture, maps with the same name plus a suffix:
 |---|---|
 | `_normal` | Tangent-space normal map, DirectX convention (green points down the image) |
 | `_orm` | R occlusion, G roughness, B metalness |
-| `_height` | Height, 0 (low) to 1 (high), for parallax |
+| `_height` | Height, 0 (low) to 1 (high), for parallax and height blending |
 | `_emissive` | Light the surface gives off (RGB) |
 
 e.g. `3D775A3269360513_cobblestones_normal.png`. The game loads them with the
 texture and hands them to material shaders, which sample them with
 `XeSampleCompanion` (`materials/include/xenos_d3d12.hlsli`) - shaders opt in;
-the built-in ones don't use them yet.
+the built-in ones don't use them, HD Ground's terrain shaders do (below).
+
+Which shaders draw a texture with maps - the ones to replace to use them - is
+in the game's log, once per texture and shader: `Texture <HASH> (with maps) is
+drawn by pixel shader <HASH> as fetch constant <N>`. Only fetch constants 0-7
+get their maps.
 
 ### Example: HD Ground
 
@@ -90,8 +96,24 @@ with normal, height and ORM maps. It needs numpy, opencv-python and pillow
 (scipy makes it faster), and the three textures in `texture_dump/` (dump them
 in the opening's streets first). The stones are drawn procedurally on the
 original's fan layout and scale, with its colors - the header explains why
-upscaling doesn't work for a texture like this. Its output derives from the
-game's textures, so keep it on your machine.
+upscaling doesn't work for a texture like this.
+
+It also builds the terrain shaders that use the maps into the mod
+(`tools/textures/terrain_shaders.py`): it ports the game's six terrain
+shaders from a shader dump and adds the stones' normals to the game's
+lighting, parallax (the stones stand out as the camera moves), highlights
+from the sun and fires, and height blending - where layers meet, the higher
+one shows: snow fills the joints and the stones poke through
+([layer blending](../materials/README.md#layer-blending)). For that it needs a
+shader dump - run the game once with `--dump_shaders=shader_dump` and walk the
+streets - and FXC from the Windows SDK on the PATH (a Visual Studio developer
+prompt); `--shaders-only` rebuilds just the shaders. The settings are in
+**F6 → Shader Options → HD Ground**: normal strength, parallax depth,
+highlights, roughness, height blending (0 = the game's blending), and the maps
+as a whole.
+
+Its output derives from the game's textures and shaders, so keep it on your
+machine.
 
 ## Material shaders, options and textures
 
@@ -137,6 +159,7 @@ Says where a lit shader keeps its light constants, so the dynamic lights
 
 | What | How |
 |---|---|
-| Textures and their maps | F6 → Mods → Reload mods (`mods_reload`) |
 | Material shaders, options, custom textures, lights | F6 → Materials → Reload from disk (`material_shaders_reload`) |
+| Mods added, removed, turned on or off (their shaders, options and lights) | F6 → Mods → Reload mods' shaders (`mods_reload`) |
+| Textures and their maps | Restart the game |
 | Game files (`files/`) | Restart the game |

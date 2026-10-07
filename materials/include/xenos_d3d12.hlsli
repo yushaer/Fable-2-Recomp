@@ -80,6 +80,12 @@ Texture2DArray<float4> xe_textures_2d[] : register(t0, space1);
 Texture3D<float4> xe_textures_3d[] : register(t0, space2);
 TextureCube<float4> xe_textures_cube[] : register(t0, space3);
 
+// Layer blending (see XeLayerBlend): the per-pixel sums of the layers drawn so
+// far. Declaring it makes the SDK set the blending up for this shader.
+#ifdef XE_LAYER_BLENDING
+RasterizerOrderedByteAddressBuffer xe_layer_sums : register(u0, space20);
+#endif
+
 // xe_flags (DxbcShaderTranslator kSysFlag_*).
 #define XE_SYS_FLAG_PRIMITIVE_POLYGONAL (1u << 4)
 #define XE_SYS_FLAG_PRIMITIVE_LINE_SHIFT 5u
@@ -119,8 +125,14 @@ bool XeMaterialOptionOn(uint slot) { return XeMaterialOption(slot) > 0.5; }
 
 #define XE_NO_TEXTURE 0xFFFFFFFFu
 
+// A descriptor slot's index in the bindless heap (texture or sampler).
+uint XeDescriptorIndex(uint slot) { return xe_descriptor_indices[slot >> 2][slot & 3]; }
+
+// Texture indices are small integers stored as float bits (denormals): select
+// the component as an integer, since a float operation would flush them to 0.
+
 // Custom textures (textures.toml): slot 0-7.
-uint XeCustomTextureIndex(uint slot) { return asuint(xe_material_params[12 + slot / 4][slot % 4]); }
+uint XeCustomTextureIndex(uint slot) { return asuint(xe_material_params[12 + slot / 4])[slot % 4]; }
 bool XeHasCustomTexture(uint slot) { return XeCustomTextureIndex(slot) != XE_NO_TEXTURE; }
 float4 XeLoadCustomTexture(uint slot, int2 texel, uint mip) {
   uint index = XeCustomTextureIndex(slot);
@@ -152,7 +164,7 @@ float4 XeSampleCustomTexture(uint slot, float2 uv, uint mip) {
 #define XE_COMPANION_HEIGHT 2u
 #define XE_COMPANION_EMISSIVE 3u
 uint XeCompanionIndex(uint fetch, uint kind) {
-  return fetch < 8u ? asuint(xe_material_params[14 + fetch][kind]) : XE_NO_TEXTURE;
+  return fetch < 8u ? asuint(xe_material_params[14 + fetch])[kind] : XE_NO_TEXTURE;
 }
 bool XeHasCompanion(uint fetch, uint kind) { return XeCompanionIndex(fetch, kind) != XE_NO_TEXTURE; }
 // With the texture's own sampler (sampler_slot - its descriptor slot in
@@ -178,8 +190,6 @@ uint XeTranslationFlags() { return asuint(xe_material_params[3].z); }
 bool XeBoolConstant(uint index) {
   return (xe_bool_constants[index >> 7][(index >> 5) & 3] & (1u << (index & 31))) != 0;
 }
-
-uint XeDescriptorIndex(uint slot) { return xe_descriptor_indices[slot >> 2][slot & 3]; }
 
 uint XeFetchConstantDword(uint fetch, uint dword) {
   uint index = fetch * 6u + dword;
@@ -639,5 +649,58 @@ float4 XeColorOutput(float4 color, uint target) {
   }
   return color;
 }
+
+#ifdef XE_LAYER_BLENDING
+// Layer blending (rex/graphics/pipeline/material_shaders.h): for a surface the
+// game draws in layers - one pass each, added up weighted by their alphas (the
+// first pass replacing what's there) - weighting this pass's layer by a factor
+// of its own (from a height map, say), with all the layers normalized
+// together, though each pass only knows its own: the result is the layers
+// weighted by alpha * factor, scaled to cover what the alphas add up to.
+//
+// A shader using it defines XE_LAYER_BLENDING before including this file,
+// outputs a second color (SV_Target1) and calls this last, with its outputs.
+// The SDK blends its color as color + destination * color1.a, and keeps the
+// sums of the alphas and of the weighted alphas of the layers drawn so far at
+// each pixel: from those this pass draws its own share of the result and
+// rescales what the earlier layers drew. Factor 1 everywhere = the game's
+// blending.
+#define XE_LAYER_BLENDING_FLAG_FIRST_LAYER (1u << 0)
+#define XE_LAYER_BLENDING_FLAG_ACTIVE (1u << 1)
+void XeLayerBlend(inout float4 color, out float4 color1, float factor, float2 position) {
+  color1 = float4(0.0, 0.0, 0.0, 1.0);
+  uint flags = uint(xe_material_params[3].w);
+  if (!(flags & XE_LAYER_BLENDING_FLAG_ACTIVE)) {
+    // The game's blending is set up.
+    return;
+  }
+  float alpha = color.a;
+  uint2 size = uint2(xe_material_params[2].zw);
+  uint2 pixel = uint2(position);
+  if (any(pixel >= size)) {
+    // No sums here (or none at all): blend as the game does.
+    color.rgb *= alpha;
+    return;
+  }
+  uint address = (pixel.y * size.x + pixel.x) * 8u;
+  // The (alpha, weighted alpha) sums of the layers drawn before.
+  float2 before = 0.0;
+  if (!(flags & XE_LAYER_BLENDING_FLAG_FIRST_LAYER)) {
+    before = asfloat(xe_layer_sums.Load2(address));
+    // Never written (the buffer starts out undefined).
+    if (!(before.x >= 0.0 && before.x < 1.0e6 && before.y >= 0.0 && before.y < 1.0e30)) {
+      before = 0.0;
+    }
+  }
+  float weighted = alpha * max(factor, 0.0);
+  float2 after = before + float2(alpha, weighted);
+  xe_layer_sums.Store2(address, asuint(after));
+  // Everything drawn so far is to be the layers weighted by alpha * factor,
+  // over their sum, times the alphas' sum.
+  float scale = after.y > 0.0 ? after.x / after.y : 0.0;
+  color.rgb *= weighted * scale;
+  color1.a = (before.x > 0.0 && after.y > 0.0) ? scale * (before.y / before.x) : 1.0;
+}
+#endif
 
 #endif  // XENOS_D3D12_HLSLI_

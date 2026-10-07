@@ -371,9 +371,18 @@ def main():
     parser.add_argument("--dump", type=Path, help="the texture dump (default <exe>/texture_dump)")
     parser.add_argument("--mod", type=Path, help='output mod (default <exe>/mods/HD Ground)')
     parser.add_argument("--preview", type=Path, help="also write a preview sheet here")
+    parser.add_argument("--shader-dump", type=Path, action="append",
+                        help="a --dump_shaders folder with the terrain shaders (default: every "
+                             "<exe>/shader_dump*); repeat for more")
+    parser.add_argument("--fxc", default="fxc", help="FXC for the terrain shaders (default: on PATH)")
+    parser.add_argument("--shaders-only", action="store_true",
+                        help="only rebuild the mod's terrain shaders, not the textures")
     args = parser.parse_args()
     dump = args.dump or args.exe / "texture_dump"
     mod = args.mod or args.exe / "mods" / "HD Ground"
+    if args.shaders_only:
+        build_shaders(args, mod)
+        return
 
     originals = {}
     for texture_hash in (FROSTY, MUDDY, SNOW):
@@ -406,11 +415,31 @@ def main():
     tk.write_mod_manifest(
         mod, "HD Ground", author="Fable 2 Recomp", version="1.0",
         description=f"The snowy streets' cobblestones and snow at {args.size}x{args.size}, "
-                    "with normal, height and ORM maps",
+                    "with normal, height and ORM maps, and terrain shaders that use them",
         priority=10)
     if args.preview:
         preview(args.preview, results)
+    build_shaders(args, mod)
     print(f"wrote {mod}")
+
+
+def build_shaders(args, mod):
+    """The terrain shaders that use the maps, built into the mod from the shader
+    dump (see terrain_shaders.py)."""
+    import shutil
+    import terrain_shaders
+    folders = args.shader_dump or sorted(args.exe.glob("shader_dump*"))
+    if not folders:
+        print("terrain shaders: no shader dump - run the game once with "
+              "--dump_shaders=shader_dump in the snowy streets, then run this again "
+              "(--shaders-only); the textures work without them")
+        return
+    if not shutil.which(args.fxc):
+        print(f"terrain shaders: {args.fxc} not found - run from a Visual Studio developer shell "
+              "(or pass --fxc); the textures work without them")
+        return
+    built = terrain_shaders.build(folders, mod / "materials", args.fxc)
+    print(f"terrain shaders: {len(built)} of {len(terrain_shaders.TERRAIN_SHADERS)} built")
 
 
 if __name__ == "__main__":
